@@ -465,9 +465,12 @@ handle_cast({lock, Object, Mode, Nodes, Require, Wait, Client, Tag} = _Req,
 handle_cast({surrender, O, ToAgent, Nodes}, S) ->
     case lists:all(
            fun(N) ->
-                   #lock{queue = Q} = L = get_lock({O,N}, S),
-                   lists:member(self(), lock_holders(L))
-                       andalso in_tail(ToAgent, tl(Q))
+                  case get_lock({O,N}, S) of
+                      undefined -> false;
+                       #lock{queue = Q} = L -> 
+                          lists:member(self(), lock_holders(L)) 
+                              andalso in_tail(ToAgent, tl(Q))
+                  end
            end, Nodes) of
         true ->
             NewS = lists:foldl(
@@ -787,7 +790,8 @@ check_if_done(S) ->
 check_if_done(#state{pending = Pending} = State, Msgs) ->
     case ets:info(Pending, size) of
         0 ->
-            notify_msgs(Msgs, have_all(State));
+            Msg = {have_all_locks, []},
+            notify_msgs([Msg | Msgs], have_all(State));
         _ ->
             check_if_done_(State, Msgs)
     end.
@@ -1192,14 +1196,18 @@ flatten_queue([], Acc) ->
 %% uniq(L)       -> ordsets:from_list(L).
 
 get_locks([H|T], Ls) ->
-    [L] = ets_lookup(Ls, H),
-    [L | get_locks(T, Ls)];
+    case ets_lookup(Ls, H) of
+        [L] -> [L | get_locks(T, Ls)];
+        [] -> get_locks(T, Ls)
+    end;
 get_locks([], _) ->
     [].
 
 get_lock(OID, #state{locks = Ls}) ->
-    [L] = ets_lookup(Ls, OID),
-    L.
+    case ets_lookup(Ls, OID) of
+        [L] -> L;
+        _ -> undefined
+    end.
 
 %% analyse computes whether a local deadlock can be detected,
 %% if not, 'ok' is returned, otherwise it returns the triple

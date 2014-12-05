@@ -858,6 +858,9 @@ do_broadcast_(Pids, Msg) when is_list(Pids) ->
     [P ! Msg || P <- Pids],
     ok.
 
+from_leader(L, Msg, #st{leader = undefined} = S) ->
+    S1 = S#st{leader = L},
+    from_leader(L,Msg,S1);
 from_leader(L, Msg, #st{leader = L, mod = M, mod_state = MSt} = S) ->
     callback(M:from_leader(Msg, MSt, opaque(S)), S);
 from_leader(_OtherL, _Msg, S) ->
